@@ -1,0 +1,135 @@
+---
+title: "FA5_EDA"
+author: "ABLIAN"
+date: "2025-05-09"
+output: pdf_document
+---
+
+#### Load and Explore the Data (10 points)
+
+```{r}
+data <- read.csv("D:/FEU/3RD YR 2ND SEM/EDA/store_sales_data.csv")
+library(ggplot2)
+library(dplyr)
+head(data)
+
+```
+
+```{r}
+summary(data)
+str(data)
+```
+
+```{r}
+ggplot(data, aes(x = sales_count)) +
+  geom_histogram(binwidth = 10, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Sales Count", x = "Sales Count", y = "Frequency") +
+  theme_minimal()
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+ggplot(data, aes(x = store_size)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(title = "Frequency of Store Sizes", x = "Store Size", y = "Count") +
+  theme_minimal()
+```
+
+```{r}
+data %>%
+  count(promo) %>%
+  mutate(proportion = n / sum(n))
+
+data %>%
+  count(holiday) %>%
+  mutate(proportion = n / sum(n))
+```
+
+the promo column had 69.88% set to have no promos while 30.12% have promosfor holidays, there are 90.44% without holidays while only 9.56% having holidays.
+
+#### Fit a Poisson Regression Model (30 points)
+
+```{r}
+model <- glm(sales_count ~ day_of_week + promo + holiday + store_size,
+             family = poisson(link = "log"),
+             data = data)
+
+summary(model)
+exp(coef(model))
+
+```
+
+#### What happens to expected sales when there’s a promotion?
+
+Promo and holiday are binary with 1 being yes and 0 being no, while store size and day of week are categoral with store size having small medium and large and store days being 0-6, we can see that on days of promotion, there is a 50.8% (1.508) sales increase compared to days without it.
+
+#### How does store size affect expected sales?
+
+Store size matters, as smaller stores (24%) have a significantly lower expected sales compared to the medium (49%).
+
+#### Assess Model Fit (20 points)
+
+```{r}
+dispersion <- deviance(model) / df.residual(model)
+dispersion
+```
+
+```{r}
+model_quasi <- glm(sales_count ~ day_of_week + promo + holiday + store_size,
+                   family = quasipoisson(link = "log"),
+                   data = data)
+summary(model_quasi)
+
+```
+
+```{r}
+library(MASS)
+model_nb <- glm.nb(sales_count ~ day_of_week + promo + holiday + store_size, data = data)
+summary(model_nb)
+```
+
+```{r}
+AIC(model)
+AIC(model_nb)
+
+```
+
+Since Poisson (first) has a lower AIC, we can use it instead of Negative Binomial(second).
+
+#### Make Predictions (20 points)
+
+Medium store on a Monday with a promotion and no holiday
+
+```{r}
+limit_sale <- tibble(
+  day_of_week = 1,
+  promo = 1,
+  holiday = 0, 
+  store_size ="medium"
+)
+
+predicted_limit_sale<-predict(model, newdata = limit_sale, type = "response")
+
+predicted_limit_sale
+```
+
+Large store on a Sunday with no promotion and a holiday
+
+```{r}
+limit_sale_large<-tibble(
+  day_of_week = 7,
+  promo=0,
+  holiday=1,
+  store_size="large"
+)
+
+predicted_limit_sale_large<-predict(model, newdata = limit_sale_large, type = "response")
+predicted_limit_sale_large
+```
+
+We can say that a large store size would yield better sales as it had the higher prediction compared to a medium store size. Even with decrease of sales due to holiday on a Sunday, the sales of a large store on a Monday is still lower since since there are other factors of size and day of week. We can say that the size of the store is the biggest factor, as a Sunday without promotion still beat a Monday medium-sized store in sales.
+
+The poisson regression model made a good fit since the overdispersion is only 1.029785 and since it is not over 1.5, there was no need to use another model to compare it to. Again, the biggest factor that contribute to sales is the size of the store, the promo, and then the days as seen in the coefficients of the Poisson model, with medium store size having an increase as it goes from small, medium, to large. The next would be the holidays, and would reflect in real life as seen with holidays but it does not fully reflect the real life settings as there are instances where promos and holidays are on the same day of sales like Christmas where people celebrate the holiday and buy gifts because there are promos.

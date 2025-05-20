@@ -1,0 +1,162 @@
+---
+title: "FA6"
+author: "ABLIAN"
+date: "2025-05-05"
+output: pdf_document
+---
+#### Data Exploration
+```{r}
+data <- read.csv("D:/FEU/3RD YR 2ND SEM/EDA/customer_segmentation.csv")
+head(data)
+```
+
+
+```{r}
+summary(data)
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(data = data, mapping = aes(y = Age)) +
+  geom_boxplot( fill = "lightblue", color = "black") +
+  labs(title = "Age Distribution among Customers", x = "Count")
+
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(data =  data, mapping = aes(x = Annual.Income..K..)) +
+  geom_histogram( fill = "lightblue", color = "black", bins = 10)+
+  labs(title = "Annual Income among Customers (in $)", x = "Annual Income (in thousands)")
+
+
+```
+
+
+```{r}
+ggplot(data =  data, mapping = aes(x =Average.Spend.per.Visit....)) +
+  geom_histogram( fill = "lightblue", color = "black", bins = 10)+
+  labs(title = "Average Spent per Visit (in $)", x = "Average Spent per Visit")
+
+```
+
+
+```{r}
+colSums(is.na(data))
+
+```
+There are no missing values.
+
+```{r}
+ggplot(data = data, mapping = aes(x = Customer.Segment, fill = Customer.Segment )) +
+  geom_bar(color = "gray") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
+  labs(title= "Customer Segmentation per Shopper", x = "Customer Segment", y = "Count")
+```
+The three types of customer are about equal but the highest one is the regular shopper, having 50 more than the lowest (premium shopper). The one in the middle is the budget shoppers, tallying at 3516. Nevertheless, all of them are high.
+
+#### Data Reprocessing
+
+```{r}
+library("caret")
+library(dplyr)
+dummy <- dummyVars("~Product.Category.Purchased", data = data)
+prod_dummy <- data.frame(predict(dummy, newdata = data))
+data_OH<-cbind(data, prod_dummy)
+data_OH$Product.Category.Purchased<- NULL
+head(data_OH)
+
+data_OH$Gender_Label <- ifelse(data_OH$Gender == "Male", 1, 0)
+data_OH$Gender <- NULL
+data_OH$Customer.ID <- NULL
+
+df <- data_OH
+df <- df%>%rename(Gender = Gender_Label)
+
+head(df)
+```
+
+
+```{r}
+continuous_vars <- c("Age","Annual.Income..K..", "Average.Spend.per.Visit....")
+df[continuous_vars] <- scale(df[continuous_vars])
+
+head(df)
+```
+
+
+```{r}
+library(caret)
+library(dplyr)
+set.seed(600)
+trIndex <- createDataPartition(df$Customer.Segment, p = 0.8, list = FALSE)
+
+train_data <- df[trIndex, ]
+test_data <- df[-trIndex, ]
+
+train_data$Customer.Segment <- as.factor(train_data$Customer.Segment)
+test_data$Customer.Segment <- as.factor(test_data$Customer.Segment)
+
+cat("\nTraining data rows:", nrow(train_data), 
+    "\nTest data rows:", nrow(test_data), 
+    "\nClass distribution in training set:\n")
+print(table(train_data$Customer.Segment))
+
+```
+
+
+```{r}
+library(nnet)
+segment_mlr <- multinom(Customer.Segment ~ ., data = train_data)
+summary(segment_mlr)
+```
+The only thing noticeable on the customer segmentation is that the age and annual income slightly has an influence on being a premium shopper, but in terms of shopping behavior, it is obvious that being a premium shopper would make you spend a higher average every visit, which is true on the analysis. We can also see that being a premium shopper also shows a tendency to lean on fashion products.
+
+```{r}
+library(glmnet)
+library(caret)
+library(ggplot2)
+
+set.seed(123)
+train_data_balanced <- upSample(
+  x = train_data[ , -which(names(train_data) == "Customer.Segment")],
+  y = train_data$Customer.Segment,
+  yname = "Customer.Segment"
+)
+X <- model.matrix(Customer.Segment ~ ., data = train_data_balanced)[, -1]
+y <- train_data_balanced$Customer.Segment
+
+cv_fit <- cv.glmnet(X, y, family = "multinomial", alpha = 0.5,
+                    type.measure = "class", nfolds = 5, standardize = TRUE)
+
+best_lambda <- cv_fit$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+
+final_model <- glmnet(X, y, family = "multinomial", alpha = 0.5, lambda = best_lambda, standardize = TRUE)
+
+test_X <- model.matrix(Customer.Segment ~ ., data = test_data)[, -1]
+
+pred_probs <- predict(final_model, newx = test_X, type = "response")[,,1]  # 3D array
+pred_labels <- colnames(pred_probs)[max.col(pred_probs)]
+
+class_levels <- levels(train_data$Customer.Segment)
+pred_labels <- factor(pred_labels, levels = class_levels)
+true_labels <- factor(test_data$Customer.Segment, levels = class_levels)
+
+conf_matrix <- confusionMatrix(pred_labels, true_labels)
+print(conf_matrix)
+
+ggplot(as.data.frame(conf_matrix$table), 
+       aes(Reference, Prediction, fill = Freq)) +
+  geom_tile() + 
+  geom_text(aes(label = Freq), color = "white", size = 5) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  theme_minimal() +
+  labs(title = "Confusion Matrix")
+```
+
+#### Reporting
+
+The customer segmentation model was built using multinomial logistic regression with elastic net regularization. It classified shoppers into three (budget, regular, premium) groups based on their age, income, spending habits, and history. The model achieved 32.6 accuracy, which is worse than random guessing, even though there are already feature scaling and cross-validation. The confusion matrix showed frequent misclassifications particularly for premium shoppers, although we can see that the age and annual income slightly has an influence on being a premium shopper. This suggests that the model lack predictive power for clear segmentation. For future improvements, analysts should focus on testing advanced nonlinear models like XGBoost (Extreme Gradiant Boosting).
