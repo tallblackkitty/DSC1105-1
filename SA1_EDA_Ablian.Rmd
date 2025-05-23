@@ -1,0 +1,208 @@
+---
+title: "SA1"
+author: "ABLIAN"
+date: "2025-03-14"
+output: pdf_document
+---
+
+####Univariate Data Analysis
+Load the dataset and summarize its structure.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+data <- read.csv("D:/FEU/3RD YR 2ND SEM/EDA/EDA_Ecommerce_Assessment.csv")
+
+head(data)
+```
+Create histograms and boxplots to visualize the distribution of Purchase_Amount, Number_of_Items, and Satisfaction_Score.
+```{r}
+plot1<-ggplot()+
+      geom_histogram(aes(x=Purchase_Amount), data=data, color = "black")
+
+plot2<-ggplot()+
+      geom_histogram(aes(x=Number_of_Items), data=data,bins= 9, color="black", fill="lightblue")
+
+plot3<-ggplot()+
+      geom_histogram(aes(x=Satisfaction_Score), data=data, bins=5, color="black", fill="lightpink")
+
+print(plot1)
+print(plot2)
+print(plot3)
+```
+Compute measures of central tendency (mean, median, mode) and spread (variance, standard deviation, IQR) for Purchase_Amount.
+```{r}
+plot1 <- ggplot() +
+  geom_boxplot(aes(y = Purchase_Amount), data = data, color = "black")
+
+plot2 <- ggplot() +
+  geom_boxplot(aes(y = Number_of_Items), data = data, color = "black", fill = "lightblue")
+
+plot3 <- ggplot() +
+  geom_boxplot(aes(y = Satisfaction_Score), data = data, color = "black", fill = "lightpink")
+
+print(plot1)
+print(plot2)
+print(plot3)
+```
+
+```{r}
+mean_purchase <- mean(data$Purchase_Amount)
+median_purchase <- median(data$Purchase_Amount)
+mode_purchase <- names(sort(-table(data$Purchase_Amount)))[1]
+
+var_purchase <- var(data$Purchase_Amount)
+sd_purchase <- sd(data$Purchase_Amount)
+IQR_purchase <- IQR(data$Purchase_Amount)
+
+summary_df <- data.frame(
+  Statistic = c("Mean", "Median", "Mode", "Variance", "Standard Deviation", "Interquartile Range"),
+  Value = c(mean_purchase, median_purchase, mode_purchase, var_purchase, sd_purchase, IQR_purchase)
+)
+
+print(summary_df)
+```
+
+Compare the distribution of Browsing_Time and Purchase_Amount across different Gender groups using density plots.
+```{r}
+ggplot(data=data, aes(x=Purchase_Amount, group=Gender, fill=Gender, alpha=0.5)) +
+  geom_density(adjust=1.5) 
+ggplot(data=data, aes(x=Browsing_Time, group=Gender, fill=Gender, alpha=0.5)) +
+  geom_density(adjust=1.5) 
+```
+
+Apply a logarithmic or square root transformation on Browsing_Time and evaluate changes in skewness.
+```{r}
+library(moments)
+
+data <- data%>%
+  mutate(Log_Browsing_Time = log(Browsing_Time + 1))  # +1 to avoid log(0)
+
+skewness_value <- skewness(data$Log_Browsing_Time, na.rm = TRUE)
+print(paste("Skewness of Log_Browsing_Time:", skewness_value))
+```
+This is skewed to the left.
+
+
+Fit a simple linear regression model predicting Purchase_Amount based on Browsing_Time. Interpret the results.
+```{r}
+model<-lm(Purchase_Amount~Browsing_Time, data=data)
+summary(model)
+
+```
+
+There is no strong evidence that browsing time significantly affects purchase amounts (p > 0.05). The model suggests that when browsing time is zero, customers spend about ₱253 on average. While browsing time shows some relationship with spending, the connection isn't statistically strong enough in this data to be certain it's not just random variation.
+
+Use ggplot2 (or equivalent) to create scatter plots and regression lines.
+```{r}
+res_purchase <- resid(model)
+data$res_purch <- res_purchase
+
+ggplot(data=data, aes(x=Browsing_Time, y=res_purchase)) +
+  geom_point()+
+  geom_smooth()
+
+```
+#### Bivariate Data Analysis
+Create scatter plots to explore the relationship between Purchase_Amount and Number_of_Items.
+```{r}
+ggplot(data=data, aes(x=Number_of_Items, y=Purchase_Amount)) +
+  geom_point()
+```
+Purchase_Amount is varying from 0-500. This indicates that there are products that have higher value than others and since Purchase_Amount vary across all points, there are no clear relationship between Number_of_Items and Purchase_Amount.
+
+Fit a polynomial regression model for Purchase_Amount and Browsing_Time and compare it with a simple linear model.
+```{r}
+model<-lm(Purchase_Amount~poly(Browsing_Time, 2), data=data)
+
+res_purch_poly <- resid(model)
+data$res_purch_poly <- res_purch_poly
+
+p1<-ggplot(data=data, aes(x=Browsing_Time, y=res_purch_poly)) +
+      geom_point()+
+      geom_smooth()
+
+p2<-ggplot(data=data, aes(x=Browsing_Time, y=res_purch_poly)) +
+      geom_point()+
+      geom_smooth()
+
+p1
+p2
+
+```
+There are no difference between the two even if you look very closely.
+
+Apply LOESS (Locally Estimated Scatterplot Smoothing) to Purchase_Amount vs. Browsing_Time and visualize the results.
+```{r}
+ggplot(data=data, aes(x=Browsing_Time, y=res_purch_poly)) +
+  geom_point()+
+  geom_smooth(method="loess", span=0.4, se=TRUE)
+
+```
+LOESS (blue squiggly line) has a few fluctuations throughout the map, but there is still no strong relationship between the two.
+
+Compare robust regression methods (Huber or Tukey regression) with ordinary least squares (OLS).
+```{r}
+library(MASS)
+huber_model <- rlm(Purchase_Amount ~ Browsing_Time, data = data, psi = psi.huber)
+summary(huber_model)
+
+```
+
+```{r}
+ols_model <- lm(Purchase_Amount ~ Browsing_Time, data =data)
+summary(ols_model)
+```
+```{r}
+ggplot(data, aes(x = Browsing_Time, y = Purchase_Amount)) +
+  geom_point(alpha = 0.5, color = "black") +
+  geom_smooth(method = "lm", color = "red", se = FALSE, linetype = "dashed") +  
+  geom_abline(slope = coef(huber_model)[2], intercept = coef(huber_model)[1], color = "lightblue", size = 1.2, alpha = 0.4)  
+```
+Looking at the summary they have minor differences to each other but in the graph they traverse the same line and are almost the same, with minimal differences.
+
+#### Trivariate/Hypervariate Data Analysis
+Explore interaction effects between Browsing_Time and Category on Purchase_Amount using interaction plots.
+```{r}
+ggplot(data, aes(x = Browsing_Time, y = Purchase_Amount, color = Category)) +
+  geom_smooth(method = "lm", se = FALSE) 
+
+```
+We can see that there are different interactions between purchase amount and browsing time and that there are categories like books and home & kitchen that have a negative relationship (intersecting point below) and positive relationships with clothing and beauty (intersecting point above).
+
+
+Create coplots of Purchase_Amount against Browsing_Time for different levels of Category.
+
+```{r}
+ggplot(data, aes(x = Browsing_Time, y = res_purchase)) +
+  geom_point(alpha = 0.4, color = "red") +
+  geom_smooth(method = "lm", se = TRUE, color = "black") +
+  facet_wrap(~ Category)
+
+
+```
+
+
+```{r}
+ggplot(data, aes(x = Browsing_Time, y = Number_of_Items, z = Purchase_Amount)) +
+  geom_density_2d_filled()
+
+
+```
+There are higher densities on the yellow region as seen in the legend to the right and most common behaviours in terms of browsing time and number of items.
+
+Perform multiple regression with Purchase_Amount as the dependent variable and Browsing_Time, Number_of_Items, and Satisfaction_Score as predictors. Perform model selection and assess variable importance.
+
+```{r}
+model_multi<-lm(Purchase_Amount~Browsing_Time+Number_of_Items+Satisfaction_Score ,data=data)
+summary(model_multi)
+
+```
+
+
+```{r}
+stepwise<-step(model_multi, direction="both")
+summary(stepwise)
+```
+We can say that it removed all the predictors leaving behind Purchase_Amount alone using the stepwise model,indicating that the 3 predictors did not have significance value in explaining Purchase_Amount.
+
